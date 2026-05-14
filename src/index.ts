@@ -1,23 +1,7 @@
 import { type Plugin, tool } from "@opencode-ai/plugin";
-
-const BOCHA_API_ENDPOINT = "https://api.bochaai.com/v1/web-search";
-
-function getApiKey(): string {
-  const key = process.env.BOCHA_API_KEY;
-  if (!key) {
-    throw new Error(
-      [
-        "Bocha API Key not found.",
-        "",
-        "Set the BOCHA_API_KEY environment variable:",
-        "  export BOCHA_API_KEY=sk-your-key-here",
-        "",
-        "Or run `opencode auth login bocha` to store it via the auth system.",
-      ].join("\n"),
-    );
-  }
-  return key;
-}
+import { existsSync, readFileSync } from "fs";
+import { homedir } from "os";
+import { join } from "path";
 
 interface WebPageValue {
   id: string | null;
@@ -60,10 +44,47 @@ interface BochaErrorResponse {
   log_id: string;
 }
 
+const BOCHA_API_ENDPOINT = "https://api.bochaai.com/v1/web-search";
+const FETCH_TIMEOUT = 30_000;
+
+const VALID_FRESHNESS = new Set(["noLimit", "oneDay", "oneWeek", "oneMonth", "oneYear"]);
+
 function isErrorResponse(body: unknown): body is BochaErrorResponse {
   if (typeof body !== "object" || body === null) return false;
   const r = body as Record<string, unknown>;
   return typeof r.code === "number" && r.code !== 200 && typeof r.message === "string";
+}
+
+function getApiKey(): string {
+  const envKey = process.env.BOCHA_API_KEY;
+  if (envKey) return envKey;
+
+  try {
+    const authPath = join(homedir(), ".local", "share", "opencode", "auth.json");
+    if (existsSync(authPath)) {
+      const authData = JSON.parse(readFileSync(authPath, "utf-8"));
+      const entry = authData["bocha"];
+      if (entry?.key) return entry.key;
+    }
+  } catch {
+    // ignore read errors, fall through to error
+  }
+
+  throw new Error(
+    [
+      "Bocha API Key not found.",
+      "",
+      "Option 1 — Set the BOCHA_API_KEY environment variable.",
+      "",
+      "Option 2 — Store it via opencode auth:",
+      "  opencode auth login other",
+      '  then enter "bocha" as the provider name and paste your API key.',
+    ].join("\n"),
+  );
+}
+
+function formatDate(dateStr: string): string {
+  return dateStr.replace(/T.*$/, "");
 }
 
 function formatResults(query: string, pages: WebPageValue[]): string {
@@ -84,7 +105,7 @@ function formatResults(query: string, pages: WebPageValue[]): string {
     }
     const meta: string[] = [];
     if (r.siteName) meta.push(r.siteName);
-    if (r.datePublished) meta.push(r.datePublished);
+    if (r.datePublished) meta.push(formatDate(r.datePublished));
     if (meta.length > 0) lines.push(`    ${meta.join(" · ")}`);
     lines.push("");
   }
@@ -96,17 +117,13 @@ export default (async () => {
   return {
     auth: {
       provider: "bocha",
-      methods: [{ type: "api", label: "Bocha API Key" }],
+      methods: [{ type: "api" as const, label: "Bocha API Key" }],
     },
 
     tool: {
-      WebSearch: tool({
-        description: [
-          "Search the web using Bocha (博查) search engine.",
-          "Best for Chinese-language web searches, news, and general web content.",
-          "Supports time range filtering, site inclusion/exclusion, and detailed summaries.",
-        ].join(" "),
-
+      BochaWebSearch: tool({
+        description:
+          "Search the web using Bocha. For general web searches, news, fact-checking, and retrieving up-to-date online content. Use as a drop-in alternative to WebSearch; supports extra features like site include/exclude filtering and detailed summaries.",
         args: {
           query: tool.schema.string().describe("Search query"),
           count: tool.schema
@@ -145,7 +162,17 @@ export default (async () => {
             query: args.query,
             count: Math.max(1, Math.min(50, count)),
           };
-          if (args.freshness) payload.freshness = args.freshness;
+          if (args.freshness) {
+            if (
+              !VALID_FRESHNESS.has(args.freshness) &&
+              !/^\d{4}-\d{2}-\d{2}(\.\.\d{4}-\d{2}-\d{2})?$/.test(args.freshness)
+            ) {
+              throw new Error(
+                `Invalid freshness value: "${args.freshness}". Must be one of: noLimit, oneDay, oneWeek, oneMonth, oneYear, or a date/range like "2024-01-01" or "2024-01-01..2024-12-31"`,
+              );
+            }
+            payload.freshness = args.freshness;
+          }
           if (args.summary !== undefined) payload.summary = args.summary;
           if (args.include) payload.include = args.include;
           if (args.exclude) payload.exclude = args.exclude;
@@ -159,6 +186,7 @@ export default (async () => {
                 "Content-Type": "application/json",
               },
               body: JSON.stringify(payload),
+              signal: AbortSignal.timeout(FETCH_TIMEOUT),
             });
           } catch (err) {
             throw new Error(

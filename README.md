@@ -1,6 +1,6 @@
 # opencode-bocha
 
-[opencode](https://opencode.ai) plugin that provides a `WebSearch` tool powered by [博查 (Bocha)](https://open.bochaai.com) search engine.
+[opencode](https://opencode.ai) plugin that provides a `BochaWebSearch` tool powered by [博查 (Bocha)](https://open.bochaai.com) search engine.
 
 ## Installation
 
@@ -28,16 +28,23 @@ Get your API key at [open.bochaai.com](https://open.bochaai.com) → API KEY 管
 export BOCHA_API_KEY="sk-your-key-here"
 ```
 
+PowerShell:
+
+```powershell
+$env:BOCHA_API_KEY = "sk-your-key-here"
+```
+
 **Option 2 — opencode auth:**
 
 ```bash
-opencode auth login bocha
-# paste your API key when prompted
+opencode auth login other
+# Provider name: bocha
+# Paste your API key when prompted
 ```
 
-## WebSearch Tool
+## BochaWebSearch Tool
 
-Once loaded, opencode's AI will automatically use the `WebSearch` tool when it needs to search the web.
+Once loaded, opencode's AI will automatically use the `BochaWebSearch` tool when it needs to search the web.
 
 ### Parameters
 
@@ -53,7 +60,7 @@ Once loaded, opencode's AI will automatically use the `WebSearch` tool when it n
 ### Example
 
 ```
-WebSearch(query="2024年人工智能发展趋势", count=5, freshness="oneYear", summary=true)
+BochaWebSearch(query="2024年人工智能发展趋势", count=5, freshness="oneYear", summary=true)
 ```
 
 ## Development

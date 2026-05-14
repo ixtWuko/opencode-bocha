@@ -2,7 +2,7 @@
 
 ## Overview
 
-opencode-bocha 是一个 opencode 插件，为 opencode 提供博查 (Bocha) 搜索引擎的 `WebSearch` 自定义工具。支持中文互联网搜索、时间范围过滤、站点过滤、长文本摘要等能力。
+opencode-bocha 是一个 opencode 插件，为 opencode 提供博查 (Bocha) 搜索引擎的 `BochaWebSearch` 自定义工具。支持全文搜索、时间范围过滤、站点过滤、长文本摘要等能力。
 
 ## Plugin Interface
 
@@ -12,7 +12,7 @@ import type { Plugin } from "@opencode-ai/plugin"
 export default (async () => {
   return {
     auth: { /* auth provider registration */ },
-    tool: { WebSearch: tool({ /* ... */ }) },
+    tool: { BochaWebSearch: tool({ /* ... */ }) },
   }
 }) satisfies Plugin
 ```
@@ -21,10 +21,10 @@ export default (async () => {
 
 | Hook | Purpose |
 |------|---------|
-| `auth` | 注册 `bocha` API Key 鉴权提供者，支持 `opencode auth login bocha` |
-| `tool` | 提供 `WebSearch` 自定义搜索引擎工具 |
+| `auth` | 注册 `bocha` API Key 鉴权提供者 |
+| `tool` | 提供 `BochaWebSearch` 自定义搜索引擎工具 |
 
-## WebSearch Tool
+## BochaWebSearch Tool
 
 ### Parameters
 
@@ -32,7 +32,7 @@ export default (async () => {
 |------|------|------|------|------|
 | `query` | string | ✅ | - | 搜索关键词 |
 | `count` | number | ❌ | 10 | 返回结果数 (1-50) |
-| `freshness` | string | ❌ | `noLimit` | 时间范围：noLimit, oneDay, oneWeek, oneMonth, oneYear, 或自定义 `YYYY-MM-DD..YYYY-MM-DD` |
+| `freshness` | string | ❌ | `noLimit` | 时间范围：noLimit, oneDay, oneWeek, oneMonth, oneYear, 或自定义 `YYYY-MM-DD..YYYY-MM-DD`；传入非法值时抛错 |
 | `summary` | boolean | ❌ | `false` | 是否返回长文本摘要（注意：默认 false，开启会增加 API 消耗） |
 | `include` | string | ❌ | - | 限定搜索网站，多个用 `\|` 或 `,` 分隔，最多 20 个域名 |
 | `exclude` | string | ❌ | - | 排除搜索网站，多个用 `\|` 或 `,` 分隔，最多 20 个域名 |
@@ -42,6 +42,7 @@ export default (async () => {
 `POST https://api.bochaai.com/v1/web-search`
 - Auth: `Authorization: Bearer <API_KEY>`
 - Content-Type: `application/json`
+- Timeout: 30s (AbortSignal)
 
 ### Request Body
 
@@ -117,16 +118,18 @@ Total: 10 results shown
 [1] 网页标题
     URL: https://...
     Summary: 详细摘要...
-    网站名称 · 2024-07-22T00:00:00+08:00
+    网站名称 · 2024-07-22
 ...
 ```
+
+说明：`datePublished` 由 `formatDate()` 截取为 `YYYY-MM-DD` 格式，原始 ISO 时间戳如 `2024-07-22T00:00:00+08:00`。
 
 ## API Key Management (混合模式)
 
 | 优先级 | 方式 | 说明 |
 |--------|------|------|
 | 1 | `BOCHA_API_KEY` 环境变量 | 首选，遵循 12-factor app |
-| 2 | `opencode auth login bocha` | 通过 opencode 内置 auth 系统存储凭证 |
+| 2 | `opencode auth login` | 运行 `opencode auth login other`，输入 `bocha` 作为 provider 名并粘贴 key |
 
 ### 方式 1：环境变量（推荐）
 
@@ -139,8 +142,10 @@ export BOCHA_API_KEY="sk-your-key-here"
 ### 方式 2：opencode auth login
 
 ```bash
-opencode auth login bocha
-# 提示输入 API Key → 加密存储在 ~/.local/share/opencode/auth.json
+opencode auth login other
+# Provider name: bocha
+# API Key: <粘贴你的 key>
+# → 凭证加密存储在 opencode auth store
 ```
 
 ## Project Structure
@@ -154,7 +159,7 @@ opencode auth login bocha
 ├── package.json        # 依赖 & 元信息
 ├── tsconfig.json       # TypeScript 配置
 └── src/
-    └── index.ts        # 插件入口：auth + WebSearch tool
+    └── index.ts        # 插件入口：auth + BochaWebSearch tool
 ```
 
 ## Development
@@ -182,10 +187,7 @@ npm publish
 
 ## Architecture Decisions
 
-1. **混合模式鉴权**：环境变量 `BOCHA_API_KEY` 优先，auth hook 兜底
-2. **env var 在 tool execute 中读取**：`process.env.BOCHA_API_KEY`，简单可靠
-3. **auth 注册**：通过 `auth` hook 注册 `bocha` provider，用户可使用 `opencode auth login bocha` 管理凭证
-4. **count 钳制**：Math.max(1, Math.min(50, count))，防止 API 报错
-5. **summary 不默认发送**：未显式传 `summary` 时不发该字段（API 默认 false），避免浪费额度
-6. **响应解析**：body.code === 200 判断成功，结果路径 `data.webPages.value`，兼容错误响应的 `code + message` 结构
-7. **纯文本输出**：将嵌套 JSON 压平为 AI 易读的文本行，标题 + URL + 摘要 + 元信息
+1. **鉴权**：环境变量 + opencode auth store 兜底，不直接建议用户手动编辑 auth.json
+2. **fetch 安全**：30s 超时 + count/freshness 参数校验
+3. **输出**：JSON 转纯文本，`datePublished` 格式化为 `YYYY-MM-DD`
+4. **代码组织**：imports → types → constants → helpers → export default
