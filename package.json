@@ -1,0 +1,36 @@
+{
+  "name": "opencode-bocha",
+  "version": "0.1.0",
+  "description": "Bocha (博查) Web Search plugin for opencode - provides WebSearch custom tool",
+  "type": "module",
+  "main": "./dist/index.js",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "peerDependencies": {
+    "@opencode-ai/plugin": ">=1.0.0"
+  },
+  "devDependencies": {
+    "@opencode-ai/plugin": "^1.14.48",
+    "@types/node": "^25.7.0",
+    "typescript": "^5.7.0"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch"
+  },
+  "keywords": [
+    "opencode",
+    "plugin",
+    "bocha",
+    "web-search",
+    "search"
+  ],
+  "license": "MIT"
+}

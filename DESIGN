@@ -1,0 +1,191 @@
+# opencode-bocha DESIGN
+
+## Overview
+
+opencode-bocha 是一个 opencode 插件，为 opencode 提供博查 (Bocha) 搜索引擎的 `WebSearch` 自定义工具。支持中文互联网搜索、时间范围过滤、站点过滤、长文本摘要等能力。
+
+## Plugin Interface
+
+```ts
+import type { Plugin } from "@opencode-ai/plugin"
+
+export default (async () => {
+  return {
+    auth: { /* auth provider registration */ },
+    tool: { WebSearch: tool({ /* ... */ }) },
+  }
+}) satisfies Plugin
+```
+
+## Hooks Used
+
+| Hook | Purpose |
+|------|---------|
+| `auth` | 注册 `bocha` API Key 鉴权提供者，支持 `opencode auth login bocha` |
+| `tool` | 提供 `WebSearch` 自定义搜索引擎工具 |
+
+## WebSearch Tool
+
+### Parameters
+
+| 参数 | 类型 | 必填 | 默认 | 说明 |
+|------|------|------|------|------|
+| `query` | string | ✅ | - | 搜索关键词 |
+| `count` | number | ❌ | 10 | 返回结果数 (1-50) |
+| `freshness` | string | ❌ | `noLimit` | 时间范围：noLimit, oneDay, oneWeek, oneMonth, oneYear, 或自定义 `YYYY-MM-DD..YYYY-MM-DD` |
+| `summary` | boolean | ❌ | `false` | 是否返回长文本摘要（注意：默认 false，开启会增加 API 消耗） |
+| `include` | string | ❌ | - | 限定搜索网站，多个用 `\|` 或 `,` 分隔，最多 20 个域名 |
+| `exclude` | string | ❌ | - | 排除搜索网站，多个用 `\|` 或 `,` 分隔，最多 20 个域名 |
+
+### API Endpoint
+
+`POST https://api.bochaai.com/v1/web-search`
+- Auth: `Authorization: Bearer <API_KEY>`
+- Content-Type: `application/json`
+
+### Request Body
+
+```json
+{
+  "query": "搜索关键词",
+  "count": 10,
+  "freshness": "noLimit",
+  "summary": false,
+  "include": "csdn.net|zhihu.com",
+  "exclude": "baidu.com"
+}
+```
+
+### Response Structure
+
+**成功响应 (HTTP 200):**
+
+```
+{
+  "code": 200,
+  "log_id": "xxx",
+  "msg": null,
+  "data": {
+    "_type": "SearchResponse",
+    "queryContext": { "originalQuery": "xxx" },
+    "webPages": {
+      "totalEstimatedMatches": 8912791,
+      "value": [
+        {
+          "id": null,
+          "name": "网页标题",
+          "url": "https://...",
+          "displayUrl": "https://...",
+          "snippet": "简短摘要",
+          "summary": "详细摘要（仅当summary=true时返回）",
+          "siteName": "网站名称",
+          "siteIcon": "网站图标URL",
+          "datePublished": "发布时间 (UTC+8)",
+          "dateLastCrawled": "抓取时间",
+          "cachedPageUrl": null,
+          "language": null,
+          "isFamilyFriendly": null,
+          "isNavigational": null
+        }
+      ],
+      "someResultsRemoved": true
+    },
+    "images": { "value": [...] },
+    "videos": null
+  }
+}
+```
+
+**错误响应:**
+
+```json
+{
+  "code": 401,
+  "message": "Invalid API KEY",
+  "log_id": "xxx"
+}
+```
+
+### 输出格式化
+
+工具将 API 原始 JSON 转为 AI 友好的纯文本格式：
+
+```
+Search results for: "xxx"
+Total: 10 results shown
+
+[1] 网页标题
+    URL: https://...
+    Summary: 详细摘要...
+    网站名称 · 2024-07-22T00:00:00+08:00
+...
+```
+
+## API Key Management (混合模式)
+
+| 优先级 | 方式 | 说明 |
+|--------|------|------|
+| 1 | `BOCHA_API_KEY` 环境变量 | 首选，遵循 12-factor app |
+| 2 | `opencode auth login bocha` | 通过 opencode 内置 auth 系统存储凭证 |
+
+### 方式 1：环境变量（推荐）
+
+```bash
+export BOCHA_API_KEY="sk-your-key-here"
+```
+
+可配合 direnv、dotenv 等工具管理。
+
+### 方式 2：opencode auth login
+
+```bash
+opencode auth login bocha
+# 提示输入 API Key → 加密存储在 ~/.local/share/opencode/auth.json
+```
+
+## Project Structure
+
+```
+.
+├── DESIGN              # 本文档
+├── README.md           # 使用说明
+├── LICENSE             # MIT
+├── .gitignore
+├── package.json        # 依赖 & 元信息
+├── tsconfig.json       # TypeScript 配置
+└── src/
+    └── index.ts        # 插件入口：auth + WebSearch tool
+```
+
+## Development
+
+```bash
+npm install
+npm run build      # 编译到 dist/
+npm run dev        # watch 模式
+```
+
+### 测试插件
+
+```jsonc
+// opencode.json
+{
+  "plugin": ["./path/to/opencode-bocha/dist/index.js"]
+}
+```
+
+## Publishing
+
+```bash
+npm publish
+```
+
+## Architecture Decisions
+
+1. **混合模式鉴权**：环境变量 `BOCHA_API_KEY` 优先，auth hook 兜底
+2. **env var 在 tool execute 中读取**：`process.env.BOCHA_API_KEY`，简单可靠
+3. **auth 注册**：通过 `auth` hook 注册 `bocha` provider，用户可使用 `opencode auth login bocha` 管理凭证
+4. **count 钳制**：Math.max(1, Math.min(50, count))，防止 API 报错
+5. **summary 不默认发送**：未显式传 `summary` 时不发该字段（API 默认 false），避免浪费额度
+6. **响应解析**：body.code === 200 判断成功，结果路径 `data.webPages.value`，兼容错误响应的 `code + message` 结构
+7. **纯文本输出**：将嵌套 JSON 压平为 AI 易读的文本行，标题 + URL + 摘要 + 元信息
