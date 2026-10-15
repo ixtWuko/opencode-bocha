@@ -4,7 +4,9 @@ node_modules/
 .pnp.js
 
 # Build output
-dist/
+# NOTE: dist/ is committed so the plugin can be installed directly from git
+# ("plugins": ["github:ixtWuko/opencode-bocha"]) without a build step.
+# Rebuild (npm run build) and commit before pushing a release.
 build/
 out/
 *.tsbuildinfo
