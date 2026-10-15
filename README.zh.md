@@ -5,23 +5,29 @@
 - 注册 **`bocha` WebSearch provider** —— opencode 内置的 `websearch` 工具可以选择博查作为搜索引擎（与内置的 Exa、Tavily 等并列），
 - 注册 **`bochawebsearch` 自定义工具**，暴露博查的完整参数（count / freshness / summary / include / exclude）。
 
-> 0.1.x 版本支持 opencode v1（`@opencode-ai/plugin` hooks API）。0.2.x 版本面向 opencode v2（`@opencode/plugin`，`{ id, setup }` 插件格式）。
+> 0.1.x 版本支持 opencode v1（`@opencode-ai/plugin` hooks API），通过 npm 分发。0.2.x 版本面向 opencode v2（`@opencode/plugin`，`{ id, setup }` 插件格式），改为从本 git 仓库分发。
 
 ## 安装
 
-```bash
-npm install opencode-bocha
-```
-
-然后在 `opencode.json` 中添加：
+在 `opencode.json` 中添加 git 来源：
 
 ```jsonc
 {
-  "plugins": ["opencode-bocha"]
+  "plugins": ["github:ixtWuko/opencode-bocha"]
 }
 ```
 
-或者直接指向本地仓库（v2 的本地插件路径必须是**目录**）：
+或使用命令行：
+
+```bash
+opencode plugin add github:ixtWuko/opencode-bocha
+```
+
+opencode 启动时会自动从 GitHub 安装，并在仓库更新后自动重载。
+
+### 本地开发
+
+开发时直接把配置指向本地克隆（v2 的本地插件路径必须是**目录**；根目录的 `server.ts` 是入口，无需构建）：
 
 ```jsonc
 {
@@ -80,17 +86,22 @@ bochawebsearch(query="2024年人工智能发展趋势", count=5, freshness="oneY
 
 ```bash
 npm install
-npm run build      # 编译到 dist/
+npm run build      # 编译 src/ → dist/
 npm run dev        # 监听模式
 ```
 
-本地测试：直接把仓库目录配置给 opencode（根目录的 `server.ts` 是本地开发入口，无需先构建）：
+### 发布流程
 
-```jsonc
-{
-  "plugins": ["/绝对路径/opencode-bocha"]
-}
+`dist/` 直接提交在仓库中（不再通过 npm 发布）。修改 `src/` 后：
+
+```bash
+npm run build
+git add dist
+git commit -m "rebuild dist"
+git push
 ```
+
+opencode 在下次更新检查时会拉取新版本。
 
 ## 许可
 

@@ -19,7 +19,7 @@ opencode v2 的插件机制与 v1 完全不同：
 | 注册方式 | 返回 `tool: {...}` / `auth: {...}` hooks | 在 `setup(ctx)` 内通过 `ctx.tool.transform` / `ctx.websearch.transform` / `ctx.integration.transform` 等 domain 编辑器注册 |
 | 工具定义 | `tool({ args: zod schema, execute })`，返回字符串 | `editor.add({ name, input, description, execute })`；`input` 接受 JSON Schema / zod / Effect Schema；execute 返回 `{ content }` |
 | 配置键 | `"plugin": [...]` | `"plugins": [...]`；npm 包名为 target，本地路径必须是**目录**（单文件仅 `.opencode/plugins/` 自动发现支持） |
-| 本地入口 | 指向编译产物文件 | 目录，解析 `server` 子路径（或 `index`）；npm 包解析 `exports["./server"]` 再回落包根 |
+| 本地入口 | 指向编译产物文件 | 目录，解析 `server` 子路径（或 `index`）；git/npm 包解析 `exports["./server"]` 再回落包根 |
 | API Key | 读 `~/.local/share/opencode/auth.json` | 凭证存入数据库（credential store），通过 integration `connection.active()` / `connection.resolve()` 读取；旧 auth.json 由 v2 迁移导入 |
 | 工具结果 | 返回 string | 返回 `{ content: string }`（无 output schema 时不得包含 `output` 键） |
 
@@ -128,9 +128,12 @@ export default plugin
 ├── README.md           # 使用说明（英文）
 ├── README.zh.md        # 使用说明（中文）
 ├── LICENSE             # MIT
-├── package.json        # exports["."] 与 exports["./server"] 均指向 dist/index.js
+├── package.json        # 入口 dist/index.js（exports["."] 与 exports["./server"]）
 ├── server.ts           # 本地开发入口（opencode 以目录加载本仓库时解析 server → server.ts）
 ├── tsconfig.json
+├── dist/               # 编译产物，提交在仓库中（git 分发所需）
+│   ├── index.js
+│   └── index.d.ts
 └── src/
     └── index.ts        # 插件：{ id, setup } —— integration + websearch provider + tool
 ```
@@ -154,16 +157,20 @@ npm run dev        # watch 模式
 
 ### 验证
 
-- `opencode plugin list` —— 仅列出托管的 npm 包插件（本地目录插件不显示）
+- `opencode plugin list` —— 仅列出托管的 npm 包插件（本地目录/git 安装的插件不显示）
 - `GET /api/integration` —— 应包含 `bocha`（key + env 两种 method）
 - `GET /api/websearch/provider?location[directory]=<项目目录>` —— 应包含 `{ id: "bocha", name: "Bocha" }`
 - `POST /api/websearch`（body `{ "query": "...", "providerID": "bocha" }`）—— 端到端搜索
 
-## Publishing
+## Distribution
 
-```bash
-npm publish
-```
+**不通过 npm 发布**，插件直接从本 git 仓库分发：
+
+- `dist/` 构建产物提交在仓库中（`.gitignore` 已放行），用户以 git 方式安装（`"plugins": ["github:ixtWuko/opencode-bocha"]`）时无需任何构建步骤
+- 插件运行时零依赖（类型 import 编译后擦除、工具入参用纯 JSON Schema），git 安装不需要拉取任何 npm 依赖
+- 发布流程：`npm run build` → commit（含 dist）→ push；opencode 的更新检查会拉到新版本
+
+npm 上的 0.1.0（v1 格式，v2 无法加载）已废弃。
 
 ## Architecture Decisions
 
@@ -173,3 +180,4 @@ npm publish
 4. **fetch 安全**：30s 超时 + count/freshness 参数校验 + 响应码/业务码双重错误处理
 5. **输出**：JSON 转纯文本，`datePublished` 格式化为 `YYYY-MM-DD`；provider 输出映射为 `WebSearch.Result`
 6. **代码组织**：types → constants → helpers → tool input schema → plugin（`{ id, setup }`）
+7. **git 分发**：dist/ 入库 + 零运行时依赖，使 git 安装免构建、免依赖下载

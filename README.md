@@ -5,23 +5,29 @@
 - a **`bocha` WebSearch provider** — opencode's built-in `websearch` tool can use Bocha alongside the built-in providers (Exa, Tavily, …),
 - a **`bochawebsearch` custom tool** with the full Bocha parameter set (count / freshness / summary / include / exclude).
 
-> Version 0.1.x supported opencode v1 (`@opencode-ai/plugin` hooks API). Version 0.2.x targets opencode v2 (`@opencode/plugin`, `{ id, setup }` plugin format).
+> Version 0.1.x supported opencode v1 (`@opencode-ai/plugin` hooks API) and was distributed via npm. Version 0.2.x targets opencode v2 (`@opencode/plugin`, `{ id, setup }` plugin format) and is distributed from this git repository.
 
 ## Installation
 
-```bash
-npm install opencode-bocha
-```
-
-Then add it to your `opencode.json`:
+Add the git source to your `opencode.json`:
 
 ```jsonc
 {
-  "plugins": ["opencode-bocha"]
+  "plugins": ["github:ixtWuko/opencode-bocha"]
 }
 ```
 
-Or reference a local checkout directly (v2 loads local plugin **directories**):
+or via the CLI:
+
+```bash
+opencode plugin add github:ixtWuko/opencode-bocha
+```
+
+opencode installs the package from GitHub at startup and reloads it automatically when the repository updates.
+
+### Local checkout
+
+For development, point the config at a local clone instead (v2 loads local plugin **directories**; the root `server.ts` is the entry, no build required):
 
 ```jsonc
 {
@@ -33,7 +39,7 @@ Or reference a local checkout directly (v2 loads local plugin **directories**):
 
 ### API Key
 
-Get your API key at [open.bochaai.com](https://open.bochaai.com) → API KEY 管理。
+Get your API key at [open.bochaai.com](https://open.bochaai.com) → API KEY 管理.
 
 **Option 1 — Environment variable (recommended):**
 
@@ -80,17 +86,22 @@ bochawebsearch(query="2024年人工智能发展趋势", count=5, freshness="oneY
 
 ```bash
 npm install
-npm run build      # compile to dist/
+npm run build      # compile src/ → dist/
 npm run dev        # watch mode
 ```
 
-To test locally, point opencode at the repository (the root `server.ts` is the local-dev entry, no build required):
+### Release flow
 
-```jsonc
-{
-  "plugins": ["/absolute/path/to/opencode-bocha"]
-}
+`dist/` is committed to the repository (npm publishing is no longer used). After changing `src/`:
+
+```bash
+npm run build
+git add dist
+git commit -m "rebuild dist"
+git push
 ```
+
+opencode picks up the new commit on its next update check.
 
 ## License
 
