@@ -9,7 +9,27 @@
 
 ## Installation
 
-### Option 1 — `.opencode/plugins/` (recommended)
+### Option 1 — Auto-install from GitHub (recommended)
+
+Add the git source to your `opencode.json(c)`:
+
+```jsonc
+{
+  "plugins": ["github:ixtWuko/opencode-bocha"]
+}
+```
+
+or via the CLI:
+
+```bash
+opencode plugin add github:ixtWuko/opencode-bocha
+```
+
+opencode clones the repository into its plugin cache on first startup (no build, no npm registry — the package is pure TypeScript) and periodically checks GitHub for updates. Pin a branch or commit with `github:ixtWuko/opencode-bocha#main`.
+
+> Configure **one** source only. Listing both `github:ixtWuko/opencode-bocha` and a local path loads the same plugin ID twice and one of them will fail with `Duplicate plugin ID`.
+
+### Option 2 — `.opencode/plugins/` directory
 
 Clone (or copy) this repository into the `.opencode/plugins/` directory of your project. opencode discovers it automatically:
 
@@ -24,7 +44,7 @@ To update later:
 git -C .opencode/plugins/opencode-bocha pull
 ```
 
-### Option 2 — any local directory
+### Option 3 — any local directory
 
 Point `plugins` in `opencode.json(c)` at a local clone (absolute path or path relative to the config file):
 

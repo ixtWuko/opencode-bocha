@@ -17,15 +17,21 @@ opencode-bocha 是一个 opencode **v2** 插件，接入博查 (Bocha) 搜索引
 - git 包安装由 opencode 内部的 npm/arborist 机制驱动，会反复 spawn `git.exe` 等子进程，
   在 Windows 上表现为不断弹出终端窗口。
 
-0.3.x 因此改为**纯本地分发**：
+0.3.x 因此改为**纯 TypeScript 源码分发**（不再提交编译产物）：
 
 | 项目 | 0.2.x | 0.3.x |
 |------|-------|-------|
 | 分发 | git 仓库 + 提交的 `dist/` 编译产物 | 纯源码 `index.ts`，opencode（Bun）直接加载 TS |
-| 安装 | npm/arborist（`github:` spec / npm 包名） | `.opencode/plugins/` 自动发现，或 `plugins` 指向本地目录 |
+| 安装 | npm/arborist 装编译产物（`github:` spec / npm 包名） | `github:` spec 装纯 TS 包（无 dist），或本地目录 / `.opencode/plugins/` 自动发现 |
 | 构建 | `tsc` 产出 `dist/` 并提交 | 无构建；`npm run check` 仅类型检查（`tsc --noEmit`） |
 | 运行时依赖 | 无（类型 import 擦除） | 无（不变） |
 | 支持版本 | opencode v2 | opencode v2（仅 v2） |
+
+0.2.x 的实际故障链：配置目标回落到 npm 上的 0.1.0（v1 格式）→ v2 加载器 schema 校验失败
+（`Plugin must export a default definition with an id and an effect or setup function`）→
+opencode 因加载失败反复重新安装/重试 → arborist 反复 spawn `git.exe` 等子进程，
+在 Windows 上表现为不断弹出终端窗口。0.3.x 的包可被 v2 正常加载，安装一次即入缓存，
+不再触发重试循环；`github:` 自动安装与本地目录加载均已实测通过。
 
 ## Plugin Interface (v2)
 
@@ -57,9 +63,9 @@ opencode v2 对配置的**本地目录**插件通过 `Host.resolve({ directory }
 
 三种加载方式：
 
-1. 项目 `.opencode/plugins/opencode-bocha/`（克隆/复制本仓库）—— 自动发现；
-2. `opencode.json(c)` 的 `"plugins": ["/绝对路径/opencode-bocha"]`；
-3. 全局 `~/.config/opencode/plugins/opencode-bocha/` —— 全项目生效。
+1. **git 自动安装**：`opencode.json(c)` 配置 `"plugins": ["github:ixtWuko/opencode-bocha"]` —— opencode 首次启动经内部 npm/arborist 克隆到插件缓存（`~/.cache/opencode/npm/git-…/`），直接加载缓存里的 `index.ts`（纯 TS，无需 dist），提交号固定并定期检查更新。实测可用（0.3.x）；注意同一 ID 只能配置一个来源，否则报 `Duplicate plugin ID`
+2. 项目 `.opencode/plugins/opencode-bocha/`（克隆/复制本仓库）—— 自动发现；
+3. `opencode.json(c)` 的 `"plugins": ["/绝对路径/opencode-bocha"]` 或全局 `~/.config/opencode/plugins/opencode-bocha/`。
 
 ## bocha WebSearch provider
 

@@ -9,7 +9,27 @@
 
 ## 安装
 
-### 方式 1 —— `.opencode/plugins/`（推荐）
+### 方式 1 —— 从 GitHub 自动安装（推荐）
+
+在 `opencode.json(c)` 中添加 git 来源：
+
+```jsonc
+{
+  "plugins": ["github:ixtWuko/opencode-bocha"]
+}
+```
+
+或使用命令行：
+
+```bash
+opencode plugin add github:ixtWuko/opencode-bocha
+```
+
+opencode 首次启动时会把仓库克隆进自己的插件缓存（无需构建、不走 npm 仓库 —— 包就是纯 TypeScript），之后定期检查 GitHub 更新。可以用 `github:ixtWuko/opencode-bocha#main` 固定分支或提交。
+
+> 只配置**一个**来源。同时配置 `github:ixtWuko/opencode-bocha` 和本地路径会以相同插件 ID 加载两次，其中一个会报 `Duplicate plugin ID` 失败。
+
+### 方式 2 —— `.opencode/plugins/` 目录
 
 把本仓库克隆（或复制）到项目的 `.opencode/plugins/` 目录下，opencode 会自动发现：
 
@@ -24,7 +44,7 @@ git clone https://github.com/ixtWuko/opencode-bocha .opencode/plugins/opencode-b
 git -C .opencode/plugins/opencode-bocha pull
 ```
 
-### 方式 2 —— 任意本地目录
+### 方式 3 —— 任意本地目录
 
 在 `opencode.json(c)` 的 `plugins` 中指向本地克隆（绝对路径，或相对于配置文件的路径）：
 
