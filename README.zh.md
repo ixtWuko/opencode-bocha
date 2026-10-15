@@ -5,35 +5,44 @@
 - 注册 **`bocha` WebSearch provider** —— opencode 内置的 `websearch` 工具可以选择博查作为搜索引擎（与内置的 Exa、Tavily 等并列），
 - 注册 **`bochawebsearch` 自定义工具**，暴露博查的完整参数（count / freshness / summary / include / exclude）。
 
-> 0.1.x 版本支持 opencode v1（`@opencode-ai/plugin` hooks API），通过 npm 分发。0.2.x 版本面向 opencode v2（`@opencode/plugin`，`{ id, setup }` 插件格式），改为从本 git 仓库分发。
+> 仅支持 opencode v2。插件就是单个纯 TypeScript 源文件（`index.ts`），由 opencode 直接加载 —— **无需构建、不走 npm 仓库、零运行时依赖**。（0.1.x 是 opencode v1 的 npm 包，0.2.x 是 git/npm 包，均已废弃。）
 
 ## 安装
 
-在 `opencode.json` 中添加 git 来源：
+### 方式 1 —— `.opencode/plugins/`（推荐）
 
-```jsonc
-{
-  "plugins": ["github:ixtWuko/opencode-bocha"]
-}
-```
-
-或使用命令行：
+把本仓库克隆（或复制）到项目的 `.opencode/plugins/` 目录下，opencode 会自动发现：
 
 ```bash
-opencode plugin add github:ixtWuko/opencode-bocha
+cd /path/to/your-project
+git clone https://github.com/ixtWuko/opencode-bocha .opencode/plugins/opencode-bocha
 ```
 
-opencode 启动时会自动从 GitHub 安装，并在仓库更新后自动重载。
+以后更新：
 
-### 本地开发
+```bash
+git -C .opencode/plugins/opencode-bocha pull
+```
 
-开发时直接把配置指向本地克隆（v2 的本地插件路径必须是**目录**；根目录的 `server.ts` 是入口，无需构建）：
+### 方式 2 —— 任意本地目录
+
+在 `opencode.json(c)` 的 `plugins` 中指向本地克隆（绝对路径，或相对于配置文件的路径）：
 
 ```jsonc
 {
   "plugins": ["/绝对路径/opencode-bocha"]
 }
 ```
+
+### 全局安装
+
+克隆到全局插件目录即可在所有项目中生效：
+
+```bash
+git clone https://github.com/ixtWuko/opencode-bocha ~/.config/opencode/plugins/opencode-bocha
+```
+
+> 不要安装 npm 包 `opencode-bocha` —— 那是废弃的 v1 插件，在 opencode v2 上会加载失败。如果之前装过，请先移除（`opencode plugin remove opencode-bocha`，或从配置的 `plugins` 中删掉）。
 
 ## 配置
 
@@ -84,24 +93,14 @@ bochawebsearch(query="2024年人工智能发展趋势", count=5, freshness="oneY
 
 ## 开发
 
+没有构建步骤。入口就是 `index.ts`，由 opencode 原样加载。
+
 ```bash
 npm install
-npm run build      # 编译 src/ → dist/
-npm run dev        # 监听模式
+npm run check      # 仅类型检查 (tsc --noEmit)
 ```
 
-### 发布流程
-
-`dist/` 直接提交在仓库中（不再通过 npm 发布）。修改 `src/` 后：
-
-```bash
-npm run build
-git add dist
-git commit -m "rebuild dist"
-git push
-```
-
-opencode 在下次更新检查时会拉取新版本。
+测试时，把测试项目的 `opencode.jsonc` 指向本仓库（方式 2），或克隆到该项目的 `.opencode/plugins/` 下即可。
 
 ## 许可
 

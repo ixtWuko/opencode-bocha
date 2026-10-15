@@ -1,19 +1,31 @@
-import type { Plugin } from "@opencode/plugin";
+// ---------------------------------------------------------------------------
+// opencode-bocha — Bocha (博查) web search for opencode v2
+// ---------------------------------------------------------------------------
+//
+// A single-file, pure-TypeScript opencode v2 plugin. It is loaded directly
+// from this source file by opencode (Bun transpiles TS on the fly) — no build
+// step, no npm registry, no runtime dependencies.
+//
+// Registers:
+//   1. a `bocha` WebSearch provider, so opencode's built-in `websearch` tool
+//      can be backed by Bocha (same mechanism as the built-in Tavily/Exa
+//      providers), and
+//   2. a `bochawebsearch` custom tool with the full Bocha parameter set
+//      (count / freshness / summary / include / exclude), and
+//   3. a `bocha` integration with `key` + `env` credential methods, so the
+//      API key can live in opencode's credential store or the environment.
+//
+// Plugin module format (opencode v2): default export of `{ id, setup }`.
+// `@opencode/plugin` is imported type-only, so the import is erased at
+// runtime and the file has zero runtime dependencies.
+//
+// Loading (opencode v2):
+//   - copy/clone this directory under `.opencode/plugins/opencode-bocha/`
+//     (auto-discovered), or
+//   - point `plugins` in opencode.json(c) at this directory.
+// ---------------------------------------------------------------------------
 
-/**
- * opencode-bocha — Bocha (博查) web search for opencode v2.
- *
- * Registers:
- *  1. a `bocha` WebSearch provider, so opencode's built-in `websearch` tool
- *     can be backed by Bocha (same mechanism as the built-in Tavily/Exa
- *     providers), and
- *  2. a `bochawebsearch` custom tool with the full Bocha parameter set
- *     (count / freshness / summary / include / exclude), parity with the
- *     v1 plugin.
- *
- * Plugin module format (opencode v2): default export of `{ id, setup }`.
- * All registrations happen inside `setup` through the plugin context.
- */
+import type { Plugin } from "@opencode/plugin";
 
 // ---------------------------------------------------------------------------
 // Bocha API types
@@ -287,7 +299,7 @@ const plugin = {
       });
     });
 
-    // 3. Register the full-parameter BochaWebSearch tool (v1 parity).
+    // 3. Register the full-parameter BochaWebSearch tool.
     await ctx.tool.transform((editor) => {
       editor.add({
         name: "bochawebsearch",
@@ -295,13 +307,13 @@ const plugin = {
         description:
           "Search the web using Bocha. For general web searches, news, fact-checking, and retrieving up-to-date online content. Use as a drop-in alternative to WebSearch; supports extra features like site include/exclude filtering and detailed summaries.",
         input: bochaWebSearchInput,
-        execute: async (args) => {
+        execute: async (args, context) => {
           const options = (args ?? {}) as BochaSearchOptions;
           if (typeof options.query !== "string" || options.query.trim() === "") {
             throw new Error("Argument 'query' is required and must be a non-empty string");
           }
           const apiKey = await getApiKey(ctx);
-          const pages = await searchBocha(apiKey, options);
+          const pages = await searchBocha(apiKey, options, context.signal);
           return { content: formatResults(options.query, pages) };
         },
       });

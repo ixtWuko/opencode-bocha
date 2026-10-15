@@ -5,23 +5,27 @@
 opencode-bocha 是一个 opencode **v2** 插件，接入博查 (Bocha) 搜索引擎：
 
 1. 注册 `bocha` **WebSearch provider** —— opencode v2 内置 `websearch` 工具可经由博查执行搜索（与内置 Tavily/Exa/Firecrawl/Parallel/TinyFish provider 同机制）。
-2. 注册 `bochawebsearch` **自定义工具** —— 暴露博查完整参数（count / freshness / summary / include / exclude），与 v1 插件功能对齐。
+2. 注册 `bochawebsearch` **自定义工具** —— 暴露博查完整参数（count / freshness / summary / include / exclude）。
 3. 注册 `bocha` **integration** 的 `key` 与 `env` 凭证方式 —— API Key 可存入 opencode 凭证库或读自环境变量。
 
-## v1 → v2 变更（本插件失效的原因）
+## 0.2.x → 0.3.x 变更（为什么完全重写）
 
-opencode v2 的插件机制与 v1 完全不同：
+0.2.x 以 git 方式（`"plugins": ["github:ixtWuko/opencode-bocha"]`）分发编译产物 `dist/`，实践中在 Windows 上问题严重：
 
-| 项目 | v1 (<= 0.1.x) | v2 (>= 0.2.x) |
-|------|---------------|----------------|
-| 插件 SDK | `@opencode-ai/plugin` | `@opencode/plugin`（npm 2.x） |
-| 模块格式 | default 导出异步函数，返回 hooks 对象 | default 导出 `{ id, setup }`（Promise 插件）或 `{ id, effect }`（Effect 插件）；否则报错 "Plugin must export a default definition with an id and an effect or setup function" |
-| 注册方式 | 返回 `tool: {...}` / `auth: {...}` hooks | 在 `setup(ctx)` 内通过 `ctx.tool.transform` / `ctx.websearch.transform` / `ctx.integration.transform` 等 domain 编辑器注册 |
-| 工具定义 | `tool({ args: zod schema, execute })`，返回字符串 | `editor.add({ name, input, description, execute })`；`input` 接受 JSON Schema / zod / Effect Schema；execute 返回 `{ content }` |
-| 配置键 | `"plugin": [...]` | `"plugins": [...]`；npm 包名为 target，本地路径必须是**目录**（单文件仅 `.opencode/plugins/` 自动发现支持） |
-| 本地入口 | 指向编译产物文件 | 目录，解析 `server` 子路径（或 `index`）；git/npm 包解析 `exports["./server"]` 再回落包根 |
-| API Key | 读 `~/.local/share/opencode/auth.json` | 凭证存入数据库（credential store），通过 integration `connection.active()` / `connection.resolve()` 读取；旧 auth.json 由 v2 迁移导入 |
-| 工具结果 | 返回 string | 返回 `{ content: string }`（无 output schema 时不得包含 `output` 键） |
+- 配置里的包目标一旦回落到 npm 上的 0.1.0（v1 格式），opencode 每次（重）加载都报
+  `Plugin must export a default definition with an id and an effect or setup function`，并因加载失败被反复重新安装/重试；
+- git 包安装由 opencode 内部的 npm/arborist 机制驱动，会反复 spawn `git.exe` 等子进程，
+  在 Windows 上表现为不断弹出终端窗口。
+
+0.3.x 因此改为**纯本地分发**：
+
+| 项目 | 0.2.x | 0.3.x |
+|------|-------|-------|
+| 分发 | git 仓库 + 提交的 `dist/` 编译产物 | 纯源码 `index.ts`，opencode（Bun）直接加载 TS |
+| 安装 | npm/arborist（`github:` spec / npm 包名） | `.opencode/plugins/` 自动发现，或 `plugins` 指向本地目录 |
+| 构建 | `tsc` 产出 `dist/` 并提交 | 无构建；`npm run check` 仅类型检查（`tsc --noEmit`） |
+| 运行时依赖 | 无（类型 import 擦除） | 无（不变） |
+| 支持版本 | opencode v2 | opencode v2（仅 v2） |
 
 ## Plugin Interface (v2)
 
@@ -40,7 +44,22 @@ const plugin = {
 export default plugin
 ```
 
-参考实现：opencode 内置 websearch provider 插件（`packages/core/src/plugin/websearch/tavily.ts`，Effect 风格）与本插件的 Promise 风格（经 `@opencode/plugin/promise/adapter` 适配）。
+- 模块格式：default 导出 `{ id, setup }`（Promise 插件），正是 v2 模块加载 schema
+  （`{ default: { id, effect } | { id, setup } }`）要求的形状。
+- `@opencode/plugin` 仅 `import type`，编译/转译后擦除 —— 文件零运行时依赖，
+  因此放到任何没有 `node_modules` 的目录都能被直接加载。
+
+## 加载路径
+
+opencode v2 对配置的**本地目录**插件通过 `Host.resolve({ directory })` 解析入口：
+先找 `server` 子路径，再找 `index`。本仓库根目录的 `index.ts` 即入口。
+（0.2.x 的 `server.ts` 转发文件已删除，不再需要。）
+
+三种加载方式：
+
+1. 项目 `.opencode/plugins/opencode-bocha/`（克隆/复制本仓库）—— 自动发现；
+2. `opencode.json(c)` 的 `"plugins": ["/绝对路径/opencode-bocha"]`；
+3. 全局 `~/.config/opencode/plugins/opencode-bocha/` —— 全项目生效。
 
 ## bocha WebSearch provider
 
@@ -51,9 +70,9 @@ export default plugin
 
 ## bochawebsearch 自定义工具
 
-- `editor.add({ name: "bochawebsearch", options: { codemode: false }, input: <JSON Schema>, execute })`
-- `input` 为纯 JSON Schema（v2 `runtime.ts` 对非 Effect/Standard 的 schema 直接透传给 LLM，并用 JsonSchema codec 校验入参），避免运行时依赖 zod
-- `execute` 校验 `query` 后调用 `searchBocha()`，返回 `{ content: formatResults(...) }`
+- `editor.add({ name: "bochawebsearch", options: { codemode: false }, input: <JSON Schema>, execute(input, context) })`
+- `input` 为纯 JSON Schema（v2 runtime 对非 Effect/Standard 的 schema 直接透传给 LLM，并用 JsonSchema codec 校验入参），避免运行时依赖 zod
+- `execute` 校验 `query` 后调用 `searchBocha()`，并把 `context.signal` 透传给 fetch（停止会话即中止请求），返回 `{ content: formatResults(...) }`
 - `options.codemode: false` 与内置 websearch 工具保持一致（不参与 codemode 代码化调用）
 
 ## API Endpoint
@@ -61,7 +80,7 @@ export default plugin
 `POST https://api.bochaai.com/v1/web-search`
 - Auth: `Authorization: Bearer <API_KEY>`
 - Content-Type: `application/json`
-- Timeout: 30s（`AbortSignal.timeout`，provider 路径下与调用方 `signal` 通过 `AbortSignal.any` 合并）
+- Timeout: 30s（`AbortSignal.timeout`，与调用方 `signal` 通过 `AbortSignal.any` 合并）
 
 ### Request Body
 
@@ -128,56 +147,34 @@ export default plugin
 ├── README.md           # 使用说明（英文）
 ├── README.zh.md        # 使用说明（中文）
 ├── LICENSE             # MIT
-├── package.json        # 入口 dist/index.js（exports["."] 与 exports["./server"]）
-├── server.ts           # 本地开发入口（opencode 以目录加载本仓库时解析 server → server.ts）
-├── tsconfig.json
-├── dist/               # 编译产物，提交在仓库中（git 分发所需）
-│   ├── index.js
-│   └── index.d.ts
-└── src/
-    └── index.ts        # 插件：{ id, setup } —— integration + websearch provider + tool
+├── index.ts            # 插件入口：{ id, setup } —— integration + websearch provider + tool
+├── package.json        # 元数据（exports → ./index.ts；无依赖、无构建脚本）
+└── tsconfig.json       # 仅类型检查（noEmit）
 ```
 
 ## Development
 
 ```bash
-npm install
-npm run build      # 编译到 dist/
-npm run dev        # watch 模式
-```
-
-### 测试插件（本地目录方式，无需构建）
-
-```jsonc
-// opencode.json
-{
-  "plugins": ["/绝对路径/opencode-bocha"]
-}
+npm install       # 仅安装类型检查用的 devDependencies
+npm run check     # tsc --noEmit
 ```
 
 ### 验证
 
-- `opencode plugin list` —— 仅列出托管的 npm 包插件（本地目录/git 安装的插件不显示）
+- 把本仓库克隆到某个测试项目的 `.opencode/plugins/opencode-bocha/`，或在其 `opencode.jsonc` 配置 `"plugins": ["<本仓库绝对路径>"]`
+- 启动 opencode，日志（`~/.local/share/opencode/log/opencode.log`）应出现
+  `msg="loading plugin" id=opencode-bocha entrypoint=file:///.../index.ts` 且无
+  `failed to load plugin`
 - `GET /api/integration` —— 应包含 `bocha`（key + env 两种 method）
-- `GET /api/websearch/provider?location[directory]=<项目目录>` —— 应包含 `{ id: "bocha", name: "Bocha" }`
+- `GET /api/websearch/provider` —— 应包含 `{ id: "bocha", name: "Bocha" }`
 - `POST /api/websearch`（body `{ "query": "...", "providerID": "bocha" }`）—— 端到端搜索
-
-## Distribution
-
-**不通过 npm 发布**，插件直接从本 git 仓库分发：
-
-- `dist/` 构建产物提交在仓库中（`.gitignore` 已放行），用户以 git 方式安装（`"plugins": ["github:ixtWuko/opencode-bocha"]`）时无需任何构建步骤
-- 插件运行时零依赖（类型 import 编译后擦除、工具入参用纯 JSON Schema），git 安装不需要拉取任何 npm 依赖
-- 发布流程：`npm run build` → commit（含 dist）→ push；opencode 的更新检查会拉到新版本
-
-npm 上的 0.1.0（v1 格式，v2 无法加载）已废弃。
 
 ## Architecture Decisions
 
-1. **零运行时依赖**：仅 `import type` 引入 `@opencode/plugin` 类型（类型在编译后擦除），工具入参用纯 JSON Schema，不引入 zod/effect 运行时依赖
-2. **同时注册 provider 与自定义工具**：provider 让 v2 内置 `websearch` 工具可用博查；自定义工具保留 v1 的完整参数能力
-3. **凭证双通道**：环境变量优先，凭证库兜底；两种方式都通过 integration method 注册，opencode UI 可见
-4. **fetch 安全**：30s 超时 + count/freshness 参数校验 + 响应码/业务码双重错误处理
-5. **输出**：JSON 转纯文本，`datePublished` 格式化为 `YYYY-MM-DD`；provider 输出映射为 `WebSearch.Result`
-6. **代码组织**：types → constants → helpers → tool input schema → plugin（`{ id, setup }`）
-7. **git 分发**：dist/ 入库 + 零运行时依赖，使 git 安装免构建、免依赖下载
+1. **单文件纯 TS、零运行时依赖**：`import type` 引入类型（转译后擦除），工具入参用纯 JSON Schema，不引入 zod/effect；无需构建即可被 opencode（Bun）直接加载
+2. **不走 npm/arborist 分发**：避免 git 包安装反复 spawn 子进程（Windows 弹终端）以及 npm 上废弃 v1 包被误装的问题
+3. **同时注册 provider 与自定义工具**：provider 让 v2 内置 `websearch` 工具可用博查；自定义工具保留完整参数能力
+4. **凭证双通道**：环境变量优先，凭证库兜底；两种方式都通过 integration method 注册，opencode UI 可见
+5. **fetch 安全**：30s 超时 + 调用方 signal 合并取消 + count/freshness 参数校验 + 响应码/业务码双重错误处理
+6. **输出**：JSON 转纯文本，`datePublished` 格式化为 `YYYY-MM-DD`；provider 输出映射为 `WebSearch.Result`
+7. **代码组织**：types → constants → helpers → tool input schema → plugin（`{ id, setup }`）

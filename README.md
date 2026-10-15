@@ -5,35 +5,44 @@
 - a **`bocha` WebSearch provider** — opencode's built-in `websearch` tool can use Bocha alongside the built-in providers (Exa, Tavily, …),
 - a **`bochawebsearch` custom tool** with the full Bocha parameter set (count / freshness / summary / include / exclude).
 
-> Version 0.1.x supported opencode v1 (`@opencode-ai/plugin` hooks API) and was distributed via npm. Version 0.2.x targets opencode v2 (`@opencode/plugin`, `{ id, setup }` plugin format) and is distributed from this git repository.
+> v2 only. The plugin is a single plain-TypeScript file (`index.ts`) that opencode loads directly — **no build step, no npm registry, no runtime dependencies**. (0.1.x was an opencode v1 npm package and 0.2.x was a git/npm package; both are obsolete.)
 
 ## Installation
 
-Add the git source to your `opencode.json`:
+### Option 1 — `.opencode/plugins/` (recommended)
 
-```jsonc
-{
-  "plugins": ["github:ixtWuko/opencode-bocha"]
-}
-```
-
-or via the CLI:
+Clone (or copy) this repository into the `.opencode/plugins/` directory of your project. opencode discovers it automatically:
 
 ```bash
-opencode plugin add github:ixtWuko/opencode-bocha
+cd /path/to/your-project
+git clone https://github.com/ixtWuko/opencode-bocha .opencode/plugins/opencode-bocha
 ```
 
-opencode installs the package from GitHub at startup and reloads it automatically when the repository updates.
+To update later:
 
-### Local checkout
+```bash
+git -C .opencode/plugins/opencode-bocha pull
+```
 
-For development, point the config at a local clone instead (v2 loads local plugin **directories**; the root `server.ts` is the entry, no build required):
+### Option 2 — any local directory
+
+Point `plugins` in `opencode.json(c)` at a local clone (absolute path or path relative to the config file):
 
 ```jsonc
 {
   "plugins": ["/absolute/path/to/opencode-bocha"]
 }
 ```
+
+### Global install
+
+Clone into the global plugins directory to enable it in every project:
+
+```bash
+git clone https://github.com/ixtWuko/opencode-bocha ~/.config/opencode/plugins/opencode-bocha
+```
+
+> Do **not** install the npm package `opencode-bocha` — that is the obsolete v1 plugin and will fail to load on opencode v2. If you installed it before, remove it (`opencode plugin remove opencode-bocha`, or delete it from `plugins` in your config).
 
 ## Configuration
 
@@ -84,24 +93,14 @@ bochawebsearch(query="2024年人工智能发展趋势", count=5, freshness="oneY
 
 ## Development
 
+There is nothing to build. The entry point is `index.ts`, loaded as-is by opencode.
+
 ```bash
 npm install
-npm run build      # compile src/ → dist/
-npm run dev        # watch mode
+npm run check      # type-check only (tsc --noEmit)
 ```
 
-### Release flow
-
-`dist/` is committed to the repository (npm publishing is no longer used). After changing `src/`:
-
-```bash
-npm run build
-git add dist
-git commit -m "rebuild dist"
-git push
-```
-
-opencode picks up the new commit on its next update check.
+To test, point a test project's `opencode.jsonc` at this checkout (Option 2 above) or clone it into that project's `.opencode/plugins/`.
 
 ## License
 

@@ -3,12 +3,11 @@ node_modules/
 .pnp
 .pnp.js
 
-# Build output
-# NOTE: dist/ is committed so the plugin can be installed directly from git
-# ("plugins": ["github:ixtWuko/opencode-bocha"]) without a build step.
-# Rebuild (npm run build) and commit before pushing a release.
+# Build output — none: the plugin ships plain TypeScript and is loaded
+# directly by opencode (Bun transpiles TS at load time).
 build/
 out/
+dist/
 *.tsbuildinfo
 
 # Environment
