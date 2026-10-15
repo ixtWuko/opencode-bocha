@@ -1,6 +1,11 @@
 # opencode-bocha
 
-[opencode](https://opencode.ai) 插件，提供基于 [博查](https://open.bochaai.com) 搜索引擎的 `BochaWebSearch` 工具。
+[opencode](https://opencode.ai) **v2** 插件，接入 [博查 (Bocha)](https://open.bochaai.com) 网页搜索：
+
+- 注册 **`bocha` WebSearch provider** —— opencode 内置的 `websearch` 工具可以选择博查作为搜索引擎（与内置的 Exa、Tavily 等并列），
+- 注册 **`bochawebsearch` 自定义工具**，暴露博查的完整参数（count / freshness / summary / include / exclude）。
+
+> 0.1.x 版本支持 opencode v1（`@opencode-ai/plugin` hooks API）。0.2.x 版本面向 opencode v2（`@opencode/plugin`，`{ id, setup }` 插件格式）。
 
 ## 安装
 
@@ -12,7 +17,15 @@ npm install opencode-bocha
 
 ```jsonc
 {
-  "plugin": ["opencode-bocha"]
+  "plugins": ["opencode-bocha"]
+}
+```
+
+或者直接指向本地仓库（v2 的本地插件路径必须是**目录**）：
+
+```jsonc
+{
+  "plugins": ["/绝对路径/opencode-bocha"]
 }
 ```
 
@@ -34,17 +47,17 @@ PowerShell：
 $env:BOCHA_API_KEY = "sk-your-key-here"
 ```
 
-**方式 2 — opencode auth：**
+**方式 2 — opencode 凭证库：**
 
-```bash
-opencode auth login other
-# Provider name: bocha
-# 按提示粘贴 API Key
-```
+插件会向 opencode 注册 `bocha` integration，因此 API Key 也可以存入 opencode 的凭证库（如 `opencode auth login`），会被自动读取。
 
-## BochaWebSearch 工具
+## Bocha WebSearch provider
 
-插件加载后，opencode 的 AI 会在需要搜索网页时自动调用 `BochaWebSearch` 工具。
+插件加载后，博查会出现在 opencode 的网页搜索 provider 列表中，内置 `websearch` 工具即可通过博查执行搜索。
+
+## bochawebsearch 工具
+
+`bochawebsearch` 工具向模型暴露博查的完整参数集。
 
 ### 参数
 
@@ -60,7 +73,7 @@ opencode auth login other
 ### 示例
 
 ```
-BochaWebSearch(query="2024年人工智能发展趋势", count=5, freshness="oneYear", summary=true)
+bochawebsearch(query="2024年人工智能发展趋势", count=5, freshness="oneYear", summary=true)
 ```
 
 ## 开发
@@ -71,11 +84,11 @@ npm run build      # 编译到 dist/
 npm run dev        # 监听模式
 ```
 
-本地测试：
+本地测试：直接把仓库目录配置给 opencode（根目录的 `server.ts` 是本地开发入口，无需先构建）：
 
 ```jsonc
 {
-  "plugin": ["./path/to/opencode-bocha/dist/index.js"]
+  "plugins": ["/绝对路径/opencode-bocha"]
 }
 ```
 

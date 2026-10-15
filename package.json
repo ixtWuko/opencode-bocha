@@ -1,11 +1,15 @@
 {
   "name": "opencode-bocha",
-  "version": "0.1.0",
-  "description": "Bocha (博查) Web Search plugin for opencode - provides WebSearch custom tool",
+  "version": "0.2.0",
+  "description": "Bocha (博查) Web Search plugin for opencode v2 - websearch provider + bochawebsearch custom tool",
   "type": "module",
   "main": "./dist/index.js",
   "exports": {
     ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./server": {
       "import": "./dist/index.js",
       "types": "./dist/index.d.ts"
     }
@@ -14,10 +18,15 @@
     "dist"
   ],
   "peerDependencies": {
-    "@opencode-ai/plugin": ">=1.0.0"
+    "@opencode/plugin": ">=2.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@opencode/plugin": {
+      "optional": true
+    }
   },
   "devDependencies": {
-    "@opencode-ai/plugin": "^1.14.48",
+    "@opencode/plugin": "^2.0.29",
     "@types/node": "^25.7.0",
     "typescript": "^5.7.0"
   },
@@ -27,6 +36,7 @@
   },
   "keywords": [
     "opencode",
+    "opencode-v2",
     "plugin",
     "bocha",
     "web-search",

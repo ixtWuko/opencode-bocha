@@ -2,47 +2,66 @@
 
 ## Overview
 
-opencode-bocha 是一个 opencode 插件，为 opencode 提供博查 (Bocha) 搜索引擎的 `BochaWebSearch` 自定义工具。支持全文搜索、时间范围过滤、站点过滤、长文本摘要等能力。
+opencode-bocha 是一个 opencode **v2** 插件，接入博查 (Bocha) 搜索引擎：
 
-## Plugin Interface
+1. 注册 `bocha` **WebSearch provider** —— opencode v2 内置 `websearch` 工具可经由博查执行搜索（与内置 Tavily/Exa/Firecrawl/Parallel/TinyFish provider 同机制）。
+2. 注册 `bochawebsearch` **自定义工具** —— 暴露博查完整参数（count / freshness / summary / include / exclude），与 v1 插件功能对齐。
+3. 注册 `bocha` **integration** 的 `key` 与 `env` 凭证方式 —— API Key 可存入 opencode 凭证库或读自环境变量。
+
+## v1 → v2 变更（本插件失效的原因）
+
+opencode v2 的插件机制与 v1 完全不同：
+
+| 项目 | v1 (<= 0.1.x) | v2 (>= 0.2.x) |
+|------|---------------|----------------|
+| 插件 SDK | `@opencode-ai/plugin` | `@opencode/plugin`（npm 2.x） |
+| 模块格式 | default 导出异步函数，返回 hooks 对象 | default 导出 `{ id, setup }`（Promise 插件）或 `{ id, effect }`（Effect 插件）；否则报错 "Plugin must export a default definition with an id and an effect or setup function" |
+| 注册方式 | 返回 `tool: {...}` / `auth: {...}` hooks | 在 `setup(ctx)` 内通过 `ctx.tool.transform` / `ctx.websearch.transform` / `ctx.integration.transform` 等 domain 编辑器注册 |
+| 工具定义 | `tool({ args: zod schema, execute })`，返回字符串 | `editor.add({ name, input, description, execute })`；`input` 接受 JSON Schema / zod / Effect Schema；execute 返回 `{ content }` |
+| 配置键 | `"plugin": [...]` | `"plugins": [...]`；npm 包名为 target，本地路径必须是**目录**（单文件仅 `.opencode/plugins/` 自动发现支持） |
+| 本地入口 | 指向编译产物文件 | 目录，解析 `server` 子路径（或 `index`）；npm 包解析 `exports["./server"]` 再回落包根 |
+| API Key | 读 `~/.local/share/opencode/auth.json` | 凭证存入数据库（credential store），通过 integration `connection.active()` / `connection.resolve()` 读取；旧 auth.json 由 v2 迁移导入 |
+| 工具结果 | 返回 string | 返回 `{ content: string }`（无 output schema 时不得包含 `output` 键） |
+
+## Plugin Interface (v2)
 
 ```ts
-import type { Plugin } from "@opencode-ai/plugin"
+import type { Plugin } from "@opencode/plugin"
 
-export default (async () => {
-  return {
-    auth: { /* auth provider registration */ },
-    tool: { BochaWebSearch: tool({ /* ... */ }) },
-  }
-}) satisfies Plugin
+const plugin = {
+  id: "opencode-bocha",
+  async setup(ctx) {
+    await ctx.integration.transform(/* 注册 key/env 凭证方式 */)
+    await ctx.websearch.transform(/* 注册 bocha provider */)
+    await ctx.tool.transform(/* 注册 bochawebsearch 工具 */)
+  },
+} satisfies Plugin.Plugin
+
+export default plugin
 ```
 
-## Hooks Used
+参考实现：opencode 内置 websearch provider 插件（`packages/core/src/plugin/websearch/tavily.ts`，Effect 风格）与本插件的 Promise 风格（经 `@opencode/plugin/promise/adapter` 适配）。
 
-| Hook | Purpose |
-|------|---------|
-| `auth` | 注册 `bocha` API Key 鉴权提供者 |
-| `tool` | 提供 `BochaWebSearch` 自定义搜索引擎工具 |
+## bocha WebSearch provider
 
-## BochaWebSearch Tool
+- `editor.add({ id: "bocha", name: "Bocha", execute(input, { signal }) })`
+- 输入：`{ query }`（内置 websearch 工具仅传关键词；固定 `count: 10`、`summary: false` 以控制消耗）
+- 输出：`WebSearch.Result[]` —— `{ url, title?, content?, time: { published? 毫秒时间戳 } }`
+- `content` 取 `summary || snippet`；`time.published` 由 `datePublished` 解析
 
-### Parameters
+## bochawebsearch 自定义工具
 
-| 参数 | 类型 | 必填 | 默认 | 说明 |
-|------|------|------|------|------|
-| `query` | string | ✅ | - | 搜索关键词 |
-| `count` | number | ❌ | 10 | 返回结果数 (1-50) |
-| `freshness` | string | ❌ | `noLimit` | 时间范围：noLimit, oneDay, oneWeek, oneMonth, oneYear, 或自定义 `YYYY-MM-DD..YYYY-MM-DD`；传入非法值时抛错 |
-| `summary` | boolean | ❌ | `false` | 是否返回长文本摘要（注意：默认 false，开启会增加 API 消耗） |
-| `include` | string | ❌ | - | 限定搜索网站，多个用 `\|` 或 `,` 分隔，最多 20 个域名 |
-| `exclude` | string | ❌ | - | 排除搜索网站，多个用 `\|` 或 `,` 分隔，最多 20 个域名 |
+- `editor.add({ name: "bochawebsearch", options: { codemode: false }, input: <JSON Schema>, execute })`
+- `input` 为纯 JSON Schema（v2 `runtime.ts` 对非 Effect/Standard 的 schema 直接透传给 LLM，并用 JsonSchema codec 校验入参），避免运行时依赖 zod
+- `execute` 校验 `query` 后调用 `searchBocha()`，返回 `{ content: formatResults(...) }`
+- `options.codemode: false` 与内置 websearch 工具保持一致（不参与 codemode 代码化调用）
 
-### API Endpoint
+## API Endpoint
 
 `POST https://api.bochaai.com/v1/web-search`
 - Auth: `Authorization: Bearer <API_KEY>`
 - Content-Type: `application/json`
-- Timeout: 30s (AbortSignal)
+- Timeout: 30s（`AbortSignal.timeout`，provider 路径下与调用方 `signal` 通过 `AbortSignal.any` 合并）
 
 ### Request Body
 
@@ -61,7 +80,7 @@ export default (async () => {
 
 **成功响应 (HTTP 200):**
 
-```
+```json
 {
   "code": 200,
   "log_id": "xxx",
@@ -73,26 +92,15 @@ export default (async () => {
       "totalEstimatedMatches": 8912791,
       "value": [
         {
-          "id": null,
           "name": "网页标题",
           "url": "https://...",
-          "displayUrl": "https://...",
           "snippet": "简短摘要",
           "summary": "详细摘要（仅当summary=true时返回）",
           "siteName": "网站名称",
-          "siteIcon": "网站图标URL",
-          "datePublished": "发布时间 (UTC+8)",
-          "dateLastCrawled": "抓取时间",
-          "cachedPageUrl": null,
-          "language": null,
-          "isFamilyFriendly": null,
-          "isNavigational": null
+          "datePublished": "2024-07-22T00:00:00+08:00"
         }
-      ],
-      "someResultsRemoved": true
-    },
-    "images": { "value": [...] },
-    "videos": null
+      ]
+    }
   }
 }
 ```
@@ -100,66 +108,31 @@ export default (async () => {
 **错误响应:**
 
 ```json
-{
-  "code": 401,
-  "message": "Invalid API KEY",
-  "log_id": "xxx"
-}
+{ "code": 401, "message": "Invalid API KEY", "log_id": "xxx" }
 ```
 
-### 输出格式化
-
-工具将 API 原始 JSON 转为 AI 友好的纯文本格式：
-
-```
-Search results for: "xxx"
-Total: 10 results shown
-
-[1] 网页标题
-    URL: https://...
-    Summary: 详细摘要...
-    网站名称 · 2024-07-22
-...
-```
-
-说明：`datePublished` 由 `formatDate()` 截取为 `YYYY-MM-DD` 格式，原始 ISO 时间戳如 `2024-07-22T00:00:00+08:00`。
-
-## API Key Management (混合模式)
+## API Key Management
 
 | 优先级 | 方式 | 说明 |
 |--------|------|------|
 | 1 | `BOCHA_API_KEY` 环境变量 | 首选，遵循 12-factor app |
-| 2 | `opencode auth login` | 运行 `opencode auth login other`，输入 `bocha` 作为 provider 名并粘贴 key |
+| 2 | opencode 凭证库（bocha integration） | `ctx.integration.connection.active("bocha")` → `connection.resolve()` 取 `{ type: "key", key }` |
 
-### 方式 1：环境变量（推荐）
-
-```bash
-export BOCHA_API_KEY="sk-your-key-here"
-```
-
-可配合 direnv、dotenv 等工具管理。
-
-### 方式 2：opencode auth login
-
-```bash
-opencode auth login other
-# Provider name: bocha
-# API Key: <粘贴你的 key>
-# → 凭证加密存储在 opencode auth store
-```
+插件通过 `ctx.integration.transform` 注册两种凭证方式：`{ type: "key", label: "Bocha API Key" }` 与 `{ type: "env", names: ["BOCHA_API_KEY"] }`，因此 Key 既可在 opencode 内绑定到 integration，也可走环境变量。
 
 ## Project Structure
 
 ```
 .
 ├── DESIGN              # 本文档
-├── README.md           # 使用说明
+├── README.md           # 使用说明（英文）
+├── README.zh.md        # 使用说明（中文）
 ├── LICENSE             # MIT
-├── .gitignore
-├── package.json        # 依赖 & 元信息
-├── tsconfig.json       # TypeScript 配置
+├── package.json        # exports["."] 与 exports["./server"] 均指向 dist/index.js
+├── server.ts           # 本地开发入口（opencode 以目录加载本仓库时解析 server → server.ts）
+├── tsconfig.json
 └── src/
-    └── index.ts        # 插件入口：auth + BochaWebSearch tool
+    └── index.ts        # 插件：{ id, setup } —— integration + websearch provider + tool
 ```
 
 ## Development
@@ -170,14 +143,21 @@ npm run build      # 编译到 dist/
 npm run dev        # watch 模式
 ```
 
-### 测试插件
+### 测试插件（本地目录方式，无需构建）
 
 ```jsonc
 // opencode.json
 {
-  "plugin": ["./path/to/opencode-bocha/dist/index.js"]
+  "plugins": ["/绝对路径/opencode-bocha"]
 }
 ```
+
+### 验证
+
+- `opencode plugin list` —— 仅列出托管的 npm 包插件（本地目录插件不显示）
+- `GET /api/integration` —— 应包含 `bocha`（key + env 两种 method）
+- `GET /api/websearch/provider?location[directory]=<项目目录>` —— 应包含 `{ id: "bocha", name: "Bocha" }`
+- `POST /api/websearch`（body `{ "query": "...", "providerID": "bocha" }`）—— 端到端搜索
 
 ## Publishing
 
@@ -187,7 +167,9 @@ npm publish
 
 ## Architecture Decisions
 
-1. **鉴权**：环境变量 + opencode auth store 兜底，不直接建议用户手动编辑 auth.json
-2. **fetch 安全**：30s 超时 + count/freshness 参数校验
-3. **输出**：JSON 转纯文本，`datePublished` 格式化为 `YYYY-MM-DD`
-4. **代码组织**：imports → types → constants → helpers → export default
+1. **零运行时依赖**：仅 `import type` 引入 `@opencode/plugin` 类型（类型在编译后擦除），工具入参用纯 JSON Schema，不引入 zod/effect 运行时依赖
+2. **同时注册 provider 与自定义工具**：provider 让 v2 内置 `websearch` 工具可用博查；自定义工具保留 v1 的完整参数能力
+3. **凭证双通道**：环境变量优先，凭证库兜底；两种方式都通过 integration method 注册，opencode UI 可见
+4. **fetch 安全**：30s 超时 + count/freshness 参数校验 + 响应码/业务码双重错误处理
+5. **输出**：JSON 转纯文本，`datePublished` 格式化为 `YYYY-MM-DD`；provider 输出映射为 `WebSearch.Result`
+6. **代码组织**：types → constants → helpers → tool input schema → plugin（`{ id, setup }`）

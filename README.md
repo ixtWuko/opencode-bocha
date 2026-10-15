@@ -1,6 +1,11 @@
 # opencode-bocha
 
-[opencode](https://opencode.ai) plugin that provides a `BochaWebSearch` tool powered by [博查 (Bocha)](https://open.bochaai.com) search engine.
+[opencode](https://opencode.ai) **v2** plugin that adds [博查 (Bocha)](https://open.bochaai.com) web search:
+
+- a **`bocha` WebSearch provider** — opencode's built-in `websearch` tool can use Bocha alongside the built-in providers (Exa, Tavily, …),
+- a **`bochawebsearch` custom tool** with the full Bocha parameter set (count / freshness / summary / include / exclude).
+
+> Version 0.1.x supported opencode v1 (`@opencode-ai/plugin` hooks API). Version 0.2.x targets opencode v2 (`@opencode/plugin`, `{ id, setup }` plugin format).
 
 ## Installation
 
@@ -12,7 +17,15 @@ Then add it to your `opencode.json`:
 
 ```jsonc
 {
-  "plugin": ["opencode-bocha"]
+  "plugins": ["opencode-bocha"]
+}
+```
+
+Or reference a local checkout directly (v2 loads local plugin **directories**):
+
+```jsonc
+{
+  "plugins": ["/absolute/path/to/opencode-bocha"]
 }
 ```
 
@@ -34,17 +47,17 @@ PowerShell:
 $env:BOCHA_API_KEY = "sk-your-key-here"
 ```
 
-**Option 2 — opencode auth:**
+**Option 2 — opencode credential store:**
 
-```bash
-opencode auth login other
-# Provider name: bocha
-# Paste your API key when prompted
-```
+The plugin registers a `bocha` integration with opencode, so the key can be stored in opencode's credential store (e.g. `opencode auth login`) and is picked up automatically.
 
-## BochaWebSearch Tool
+## Bocha WebSearch provider
 
-Once loaded, opencode's AI will automatically use the `BochaWebSearch` tool when it needs to search the web.
+Once loaded, Bocha appears in opencode's web search provider list and the built-in `websearch` tool can route searches through it.
+
+## bochawebsearch tool
+
+The `bochawebsearch` tool exposes Bocha's full parameter set to the model.
 
 ### Parameters
 
@@ -60,7 +73,7 @@ Once loaded, opencode's AI will automatically use the `BochaWebSearch` tool when
 ### Example
 
 ```
-BochaWebSearch(query="2024年人工智能发展趋势", count=5, freshness="oneYear", summary=true)
+bochawebsearch(query="2024年人工智能发展趋势", count=5, freshness="oneYear", summary=true)
 ```
 
 ## Development
@@ -71,11 +84,11 @@ npm run build      # compile to dist/
 npm run dev        # watch mode
 ```
 
-To test locally, reference the compiled output in your config:
+To test locally, point opencode at the repository (the root `server.ts` is the local-dev entry, no build required):
 
 ```jsonc
 {
-  "plugin": ["./path/to/opencode-bocha/dist/index.js"]
+  "plugins": ["/absolute/path/to/opencode-bocha"]
 }
 ```
 
